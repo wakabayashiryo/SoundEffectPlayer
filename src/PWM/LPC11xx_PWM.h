@@ -15,7 +15,7 @@
 
 typedef struct
 {
-	LPC_TMRx_Config *timer_conf;
+	LPC_TMRx_Config timer_conf;
 	uint32_t Prescaler_pwm;
 	uint32_t Mask_outpin;
 }LPC_PWM_Config;

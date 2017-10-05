@@ -30,7 +30,7 @@ uint32_t Bri=0,Bwi=0,Bct=0;
 extern void disk_timerproc (void);
 
 void Basic_Init(void);
-void BufferClear(void);
+void Clear_Buffer(void);
 void ErrorHandle(uint8_t blinknum,const char *message);
 
 void UART_Init_GPIO(void);
@@ -38,7 +38,7 @@ void UART_Init_GPIO(void);
 volatile uint32_t Timer;
 
 LPC_TMRx_Config timer_conf;
-static LPC_PWM_Config pconfig;
+LPC_PWM_Config pconfig;
 
 volatile uint32_t delay;
 #define LPC_delay(time) {\
@@ -64,10 +64,18 @@ int main(void)
 
 		LED_BLUE = 1;
 		LED_RED= 1;
+		LED_GREEN = 1;
 
 		UART_Init(UART_Init_GPIO,BAUD_9600);
 		xdev_out(UART_Transmit);
 		xdev_in(UART_Receive);
+
+		LPC_IOCON->R_PIO1_1 = 0x83;//PWM output left channel [MAT0 output mode]
+		LPC_IOCON->R_PIO1_2 = 0x83;//PWM output right channel [MAT1 output mode]
+
+		pconfig.Mask_outpin = 0x03;
+		pconfig.Prescaler_pwm = 1;
+		PWM32B1_Init(&pconfig);
 
 		timer_conf.TMRx = LPC_TMR16B0;
 		timer_conf.MaskClearCT = 1;
@@ -76,21 +84,11 @@ int main(void)
 		timer_conf.MR0Value = 1093;
 		timer_conf.Prescaler = 0;
 		Timer16_32_Init(&timer_conf);
-		EnableTMR16B0IRQ();
-
-		LPC_IOCON->R_PIO1_1 = 0x83;//PWM output left channel [MAT0 output mode]
-		LPC_IOCON->R_PIO1_2 = 0x83;//PWM output right channel [MAT1 output mode]
-
-		pconfig.Mask_outpin = 0x03;
-		pconfig.Prescaler_pwm = 0;
-		PWM32B1_Init(&pconfig);
-
-		LPC_TMR32B1->PWMC |= (0x03<<0);//MAT3 IS PWM MODE
-
-		SysTick_Config(SystemCoreClock/(1001-1));
 
 		NVIC_SetPriority(TIMER_16_0_IRQn,0);
+		EnableTMR16B0IRQ();
 
+		SysTick_Config(SystemCoreClock/(1001-1));
 
 		if(disk_initialize(0))
 				ErrorHandle(1,"FatFs mount error\n");
@@ -195,7 +193,7 @@ int main(void)
 					}
 					PLAYCTRL(false);
 
-					BufferClear();
+					Clear_Buffer();
 					Bwi = 0;
 					Bri  = 0;
 				}
@@ -213,7 +211,7 @@ void TIMER16_0_IRQHandler (void)
 		Timer16_32_Clear_IR(&timer_conf);
 }
 
-void BufferClear(void)
+void Clear_Buffer(void)
 {
 		uint32_t decoy;
 		for(decoy=0;decoy<BUFFERSIZE;decoy++)
@@ -229,11 +227,13 @@ void SysTick_Handler(void)
 		if((led>1000)&&playctrl)
 		{
 				led = 0;
-				LED_RED ^= 1;
+				LED_RED = 1;		//Celar RED of LED
+				LED_BLUE ^= 1;	//toggle Bule of LED ever 1second
 		}
 		else if(!playctrl)
 		{
-				LPC_GPIO0_Bits->PIO4 = 1;
+			    LED_BLUE = 1;		//Clear Bule of LED
+				LED_RED = 0;		//Set red of LED
 		}
 
 		if(delay>0)delay--;

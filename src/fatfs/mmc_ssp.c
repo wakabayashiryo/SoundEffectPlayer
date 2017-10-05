@@ -220,7 +220,7 @@ int select (void)	/* 1:OK, 0:Timeout */
 static
 void power_on (void)	/* Enable SSP module and attach it to I/O pads */
 {
-	SPI_Init(SPI_Init_GPIO,0x02,SSPMASTER);
+	SPI_Init(SPI_Init_GPIO,0x03,SSPMASTER);
 
 	LPC_GPIO0->DIR &= ~(1<<7);
 	LPC_IOCON->PIO0_7 = 0x00;

@@ -15,10 +15,14 @@ void Timer16_32_SetExternalOut(LPC_TMR_TypeDef *TMRx,uint8_t MRx,EMR_MODE mode)
 void Timer16_32_Init(LPC_TMRx_Config *config)
 {
 	//supplied system clock each TMRx
-	if(config->TMRx==LPC_TMR16B0) LPC_SYSCON->SYSAHBCLKCTRL |= (1<<7);
-	else if(config->TMRx==LPC_TMR16B1) LPC_SYSCON->SYSAHBCLKCTRL |= (1<<8);
-	else if(config->TMRx==LPC_TMR32B0) LPC_SYSCON->SYSAHBCLKCTRL |= (1<<9);
-	else if(config->TMRx==LPC_TMR32B1) LPC_SYSCON->SYSAHBCLKCTRL |= (1<<10);
+	if(config->TMRx==LPC_TMR16B0)
+		LPC_SYSCON->SYSAHBCLKCTRL |= (1<<7);
+	if(config->TMRx==LPC_TMR16B1)
+		LPC_SYSCON->SYSAHBCLKCTRL |= (1<<8);
+	if(config->TMRx==LPC_TMR32B0)
+		LPC_SYSCON->SYSAHBCLKCTRL |= (1<<9);
+	if(config->TMRx==LPC_TMR32B1)
+		LPC_SYSCON->SYSAHBCLKCTRL |= (1<<10);
 
 	config->TMRx->MR0 = config->MR0Value;
 	config->TMRx->MR1 = config->MR1Value;
