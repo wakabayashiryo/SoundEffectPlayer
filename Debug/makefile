@@ -10,7 +10,6 @@ RM := rm -rf
 -include sources.mk
 -include src/wav/subdir.mk
 -include src/fatfs/subdir.mk
--include src/UART/subdir.mk
 -include src/Timer16_32/subdir.mk
 -include src/SPI/subdir.mk
 -include src/PWM/subdir.mk

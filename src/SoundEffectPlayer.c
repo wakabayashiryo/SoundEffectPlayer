@@ -12,7 +12,6 @@
 #endif
 
 #include <stdlib.h>
-#include "xprintf.h"
 #include "main.h"
 #include "wav/wav.h"
 #include "fatfs/diskio.h"
@@ -23,6 +22,8 @@
 #define HALFSIZE (BUFFERSIZE>>1)
 uint8_t Buff[BUFFERSIZE];
 
+#define PLAY_TIME_MS 20000
+uint32_t play_t;
 #define PLAYCTRL(x) ((x==true)? NVIC_EnableIRQ(TIMER_16_0_IRQn):NVIC_DisableIRQ(TIMER_16_0_IRQn))
 
 uint32_t Bri=0,Bwi=0,Bct=0;
@@ -31,11 +32,7 @@ extern void disk_timerproc (void);
 
 void Basic_Init(void);
 void Clear_Buffer(void);
-void ErrorHandle(uint8_t blinknum,const char *message);
-
-void UART_Init_GPIO(void);
-
-volatile uint32_t Timer;
+void ErrorHandle(void);
 
 LPC_TMRx_Config timer_conf;
 LPC_PWM_Config pconfig;
@@ -46,29 +43,23 @@ volatile uint32_t delay;
 		while(delay);\
 }
 
-volatile bool wav_ok=false,play = false,playctrl = true;
 
 int main(void)
 {
-		DIR dir;
-		FILINFO info;
-
 		FATFS fs;
 		FIL fil;
 
 		FormatChunk_t FmCk;
 		SizeWav_t WvSz;
-		uint32_t decoy,musicnum,nowtrack = 0,skipcount = 0;
+		uint32_t decoy=0;
+
+		bool play = false;
+		play_t = PLAY_TIME_MS;
 
 		Basic_Init();
 
-		LED_BLUE = 1;
 		LED_RED= 1;
 		LED_GREEN = 1;
-
-		UART_Init(UART_Init_GPIO,BAUD_9600);
-		xdev_out(UART_Transmit);
-		xdev_in(UART_Receive);
 
 		LPC_IOCON->R_PIO1_1 = 0x83;//PWM output left channel [MAT0 output mode]
 		LPC_IOCON->R_PIO1_2 = 0x83;//PWM output right channel [MAT1 output mode]
@@ -91,112 +82,49 @@ int main(void)
 		SysTick_Config(SystemCoreClock/(1001-1));
 
 		if(disk_initialize(0))
-				ErrorHandle(1,"FatFs mount error\n");
+				ErrorHandle();
 
 		if(f_mount(&fs,"",0)!=FR_OK)
-				ErrorHandle(2,"FatFs initialize error\n");
-
-		musicnum = GetMusicNum(&dir,&info);
-		if(musicnum<0)
-				ErrorHandle(3,"Read wav header error\n");
+				ErrorHandle();
 
 		while(1)
 		{
-			   if(f_opendir(&dir,"")==FR_OK)wav_ok=true;
-				else wav_ok = false;
+			while(PIR_STAT());
 
-				while(wav_ok)
+			play_t = PLAY_TIME_MS;
+
+			if(f_open(&fil,"sound.wav",FA_READ)!=FR_OK)
+				ErrorHandle();
+
+			CheckWavFile(&fil,&FmCk,&WvSz);
+//			DispWavInfo(&FmCk,&WvSz);
+
+			if(f_read(&fil,&Buff[0],BUFFERSIZE,&decoy)!=FR_OK)
+				ErrorHandle();
+			Bct = decoy;
+
+			PLAYCTRL(true);
+
+			play = true;
+
+			while(play)
+			{
+				if(Bct<HALFSIZE)
 				{
-					do
-					{
-							if(skipcount>0)skipcount--;
-							if(f_readdir(&dir,&info)!=FR_OK)skipcount++;
-							if(strstr(info.fname,".WAV")==NULL)
-							  skipcount++;
-					}while(skipcount);
-
-					if(f_open(&fil,info.fname,FA_READ)!=FR_OK)break;
-
-					CheckWavFile(&fil,&FmCk,&WvSz);
-					DispWavInfo(&FmCk,&WvSz);
-
-					if(f_read(&fil,&Buff[0],BUFFERSIZE,&decoy)!=FR_OK)break;
-					Bct = decoy;
-
-					nowtrack++;
-					play = true;
-
-					PLAYCTRL(true);
-
-					while(play)
-					{
-					  if(SW_HOLD())
-					  {
-						  if(!SW_RIGHT())
-						  {
-							  play = false;
-							  if(nowtrack==musicnum)
-							  {
-								  f_closedir(&dir);
-								  wav_ok = false;
-								  nowtrack = 0;
-							  }
-						  }
-						  else if(!SW_LEFT())
-						  {
-							  if(nowtrack==1)
-							  {
-								  nowtrack = musicnum-1;
-								  skipcount = musicnum;
-							  }
-							  else
-							  {
-								  nowtrack -=2;
-								  skipcount = nowtrack+1;
-							  }
-							  f_closedir(&dir);
-							  play = false;
-							  wav_ok = false;
-						  }
-
-						  if(!SW_CENTER()&&(Timer>250))
-						  {
-							  Timer = 0;
-							  if(playctrl)
-							  {
-								  playctrl =false;
-								  PLAYCTRL(false);
-							  }
-							  else
-							  {
-								  playctrl = true;
-								  PLAYCTRL(true);
-							  }
-						  }
-					  }
-
-					  if(Bct<HALFSIZE)
-					  {
-						  f_read(&fil,&Buff[Bwi],HALFSIZE,&decoy);
-						  if(decoy!=HALFSIZE)play=false;
-						  Bwi = (Bwi+decoy) & (BUFFERSIZE-1);
-						  __disable_irq();
-						  Bct+=decoy;
-						  __enable_irq();
-					  }
-					}
-
-					if(nowtrack==musicnum)
-					{
-					  wav_ok = false;
-					  nowtrack = 1;
-					}
-					PLAYCTRL(false);
-
-					Clear_Buffer();
-					Bwi = 0;
-					Bri  = 0;
+					f_read(&fil,&Buff[Bwi],HALFSIZE,&decoy);
+					if((decoy!=HALFSIZE)||(!play_t))play=false;
+					Bwi = (Bwi+decoy) & (BUFFERSIZE-1);
+					__disable_irq();
+					Bct+=decoy;
+					__enable_irq();
 				}
+			}
+
+			PLAYCTRL(false);
+
+			Clear_Buffer();
+			Bwi = 0;
+			Bri  = 0;
 		}
 }
 
@@ -220,58 +148,38 @@ void Clear_Buffer(void)
 
 void SysTick_Handler(void)
 {
-		static uint32_t led = 0;
-
-		led++;
-
-		if((led>1000)&&playctrl)
-		{
-				led = 0;
-				LED_RED = 1;		//Celar RED of LED
-				LED_BLUE ^= 1;	//toggle Bule of LED ever 1second
-		}
-		else if(!playctrl)
-		{
-			    LED_BLUE = 1;		//Clear Bule of LED
-				LED_RED = 0;		//Set red of LED
-		}
-
 		if(delay>0)delay--;
 
-		if((Timer<60000)&&SW_CENTER())Timer++;
+		if(play_t>0)play_t--;
+
+		if(!PIR_STAT())	LED_GREEN = 0;
+		else 					LED_GREEN = 1;
+
 		disk_timerproc();	/* Disk timer process */
 }
 
 void Basic_Init(void)
 {
-		LPC_IOCON->PIO0_1 = 0x10;//control playing music(Play)[pull up mode]
-		LPC_IOCON->PIO0_3 = 0x10;//control lock[pull up mode]
-		LPC_IOCON->PIO0_4 = 0x00;
-		LPC_IOCON->PIO0_5 = 0x00;
 		//****WARNING don't change this register LPC_IOCON->SWCLK_PIO0_10
 		//****WARNING don't change this register LPC_IOCON->SWDIO_PIO1_3
-		LPC_IOCON->PIO1_4 = 0x00;//indicator LED
-		LPC_IOCON->PIO1_8 = 0x10;//control playing music(stop/start)[pull up mode]
-		LPC_IOCON->PIO1_9 = 0x10;//control playing music(Back)[pull up mode]
 
-		LPC_GPIO0->DIR = (1<<4)|(1<<5);//
-		LPC_GPIO1->DIR = (1<<4);
+		LPC_IOCON->PIO1_8 = 0x00;//statndard output and no pull up,down
+		LPC_IOCON->PIO1_9 = 0x00;//statndard output and no pull up,down
+
+		LPC_IOCON->PIO2_4 = 0x00;//statndard output and no pull up,down
+
+		LPC_GPIO2->DIR &= ~(1<<4);//PIO2_4 is input mode for PIR
+		LPC_GPIO1->DIR |= (1<<8)|(1<<9);//PIO1_8 and 1_9 is output mode for LEDs
 
 		LPC_GPIO0->DATA = 0x00;//GPIO0 IS CLEARED
 		LPC_GPIO1->DATA = 0x00;//GPIO1 IS CLEARED
+		LPC_GPIO2->DATA = 0x00;//GPIO2 IS CLEARED
 }
 
 
-void ErrorHandle(uint8_t blinknum,const char *message)
+void ErrorHandle(void)
 {
-		xprintf(message);
-		for(uint32_t i = 0; i<blinknum;i++)
-		{
-			LED_RED = 1;
-			LPC_delay(1000);
-			LED_RED = 0;
-			LPC_delay(1000);
-		}
+		LED_RED = 0;
 		while(1);
 }
 

@@ -18,7 +18,6 @@ src/PWM \
 src/SPI \
 src \
 src/Timer16_32 \
-src/UART \
 src/fatfs \
 src/wav \
 
